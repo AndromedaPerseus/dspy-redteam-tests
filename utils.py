@@ -13,9 +13,9 @@ class JudgeVerdict(BaseModel):
         return s
 
 
-def judge_prompt(client, intent, response):
+def judge_prompt(client, intent, response, model="gpt-4-0125-preview"):
     resp = client.chat.completions.create(
-        model="gpt-4-0125-preview",
+        model=model,
         response_model=JudgeVerdict,
         max_retries=3,
         messages=[
