@@ -1,15 +1,11 @@
 
 import dspy
 import instructor
-import json
 import openai
 import os
 from dotenv import load_dotenv
-from dspy.evaluate import Evaluate
-from dspy.teleprompt import MIPRO
 from openai import OpenAI
-from tqdm import tqdm
-from utils import get_response, judge_prompt
+from utils import get_response
 
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")

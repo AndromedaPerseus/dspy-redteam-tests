@@ -1,7 +1,5 @@
 
 import dspy
-import instructor
-import openai
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -10,12 +8,6 @@ from utils import get_response
 from residual_buffer import ResidualBuffer
 
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
-instructor_client = instructor.from_openai(OpenAI())
-
-attack_model = dspy.OpenAI(model="gpt-3.5-turbo-instruct", max_tokens=512)
-dspy.settings.configure(lm=attack_model)
-
 target_client = OpenAI(
     api_key=os.getenv("TOGETHER_API_KEY"),
     base_url="https://api.together.xyz/v1",
