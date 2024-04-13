@@ -3,3 +3,4 @@ openai
 dspy-ai
 tqdm
 polars
+dotenv
