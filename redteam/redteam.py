@@ -15,7 +15,9 @@ from openai import OpenAI
 from tqdm import tqdm
 from utils import get_response, judge_prompt
 
-import module_basic, module_residual, module_residual_buffer
+import module_basic
+import module_residual
+import module_residual_buffer
 
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
