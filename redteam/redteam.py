@@ -60,7 +60,7 @@ def metric(intent, attack_prompt, trace=None, eval_round=True):
 def eval_program(prog, eval_set):
     score = 0
     for ex in tqdm(eval_set, desc="Evaluation"):
-        result = prog(ex)
+        result = prog(harmful_intent=ex.harmful_intent)
         score += metric(
             intent=ex.harmful_intent, attack_prompt=result.attack_prompt, eval_round=True
         )
@@ -82,13 +82,13 @@ def evaluate_baseline() -> int | float:
     trainset = load_trainset()
 
     # Evaluate baseline: directly passing in harmful intent strings
+    print("--- Evaluating Raw Harmful Intent Strings ---")
     base_score = 0
     for ex in tqdm(trainset, desc="Raw Input Score"):
         base_score += metric(
             intent=ex.harmful_intent, attack_prompt=ex.harmful_intent, eval_round=True
         )
     base_score /= len(trainset)
-    print("--- Evaluating Raw Harmful Intent Strings ---")
     print(f"Baseline Score: {base_score}")
 
     return base_score
@@ -100,10 +100,10 @@ def evaluate_uncompiled(prog) -> int | float:
     print("\n--- Evaluating Initial Architecture ---")
     score = eval_program(prog, trainset)
     print(f"Initial Score: {score}")
-    return score
+    return score / len(trainset)
 
 
-def evaluate_compiled(prog) -> int | float:
+def evaluate_compiled(prog, num_threads: int = 4) -> int | float:
     trainset = load_trainset()
 
     optimizer = MIPRO(metric=metric, verbose=True, view_data_batch_size=3)
@@ -114,14 +114,14 @@ def evaluate_compiled(prog) -> int | float:
         max_labeled_demos=0,
         num_trials=30,
         requires_permission_to_run=False,
-        eval_kwargs=dict(num_threads=16, display_progress=True, display_table=0),
+        eval_kwargs=dict(num_threads=num_threads, display_progress=True, display_table=0),
     )
 
     # Evaluating architecture DSPy post-compilation
     print("\n--- Evaluating Optimized Architecture ---")
     score = eval_program(best_prog, trainset)
     print(f"Optimized Score: {score}")
-    return score
+    return score / len(trainset)
 
 
 def choose_args() -> argparse.Namespace:
@@ -134,6 +134,8 @@ def choose_args() -> argparse.Namespace:
     parser.add_argument("--num_layers", type=int, nargs="+", default=5)
     parser.add_argument("--buf_size", type=int, nargs="+", default=1)
     parser.add_argument("--critique_model", type=str, nargs="+", default="gpt-3.5-turbo-instruct")
+
+    parser.add_argument("--num_threads", type=int, default=4, help="Number of threads to use for optimization")
 
     args = parser.parse_args()
 
@@ -153,14 +155,16 @@ def get_setting_combinations(args):
             if attack_program == "buffered" 
             else [(0, "")]
         )
-        settings.append(
-            dict(
-                attack_program=attack_program,
-                num_layers=num_layers,
-                buf_size=buf_size,
-                critique_model=critique_model,
-            )
-            for buf_size, critique_model in buf_crit_it
+        settings.extend(
+            [
+                dict(
+                    attack_program=attack_program,
+                    num_layers=num_layers,
+                    buf_size=buf_size,
+                    critique_model=critique_model,
+                )
+                for buf_size, critique_model in buf_crit_it
+            ]
         )
     return settings
 
@@ -168,33 +172,40 @@ def get_setting_combinations(args):
 def main():
     args = choose_args()
     settings = get_setting_combinations(args)
-    for setting in settings:
-        print("\n--- Running Experiment ---")
+    for i, setting in enumerate(settings):
+        print(f"\n\n\n\n--- Running Experiment {i+1}/{len(settings)} ---")
         print(f"- Attack Program: {setting['attack_program']}")
         print(f"- Number of Layers: {setting['num_layers']}")
         print(f"- Buffer Size: {setting['buf_size']}")
-        print(f"- Critique Model: {setting['critique_model']}")
+        print(f"- Critique Model: {setting['critique_model']}\n\n\n\n")
         
-        prog = choose_attack_program(**setting)
+        prog = choose_attack_program(
+            choice=setting["attack_program"], 
+            num_layers=setting["num_layers"],
+            buf_size=setting["buf_size"],
+            critique_model=setting["critique_model"],
+        )
         base_score = evaluate_baseline()
         initial_score = evaluate_uncompiled(prog)
-        optimized_score = evaluate_compiled(prog)
+        optimized_score = evaluate_compiled(prog, num_threads=args.num_threads)
 
         results = {
-            "baseline": base_score,
-            "initial": initial_score,
-            "optimized": optimized_score,
-            "attack_program": setting["attack_program"],
-            "num_layers": setting["num_layers"],
-            "buf_size": setting["buf_size"],
-            "critique_model": setting["critique_model"],
+            "baseline": [base_score],
+            "initial": [initial_score],
+            "optimized": [optimized_score],
+            "attack_program": [setting["attack_program"]],
+            "num_layers": [setting["num_layers"]],
+            "buf_size": [setting["buf_size"]],
+            "critique_model": [setting["critique_model"]],
         }
 
         if args.save:
+            df = pl.DataFrame(results)
             if not os.path.exists(args.savefile):
-                pl.DataFrame(results).to_csv(args.savefile)
+                df.write_csv(args.savefile)
             else:
-                pl.read_csv(args.savefile).extend(pl.DataFrame(results)).to_csv(args.savefile)
+                with open(args.savefile, "ab") as f:
+                    df.write_csv(f, include_header=False)
 
 
 if __name__ == "__main__":
