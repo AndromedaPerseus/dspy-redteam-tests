@@ -62,7 +62,8 @@ class AttackProgram(dspy.Module):
         # Iterative jailbreaking attempts: (Attack, Refine) x self.layers
         for i in range(self.layers):
             attack = self.try_attacks[i](
-                harmful_intent=harmful_intent, critique=critique
+                harmful_intent=harmful_intent, 
+                critique=critique,
             )
             response = self.get_response(
                 target_client,
@@ -76,4 +77,7 @@ class AttackProgram(dspy.Module):
                 target_response=response,
             )
             critique = critique.critique
-        return self.try_attacks[-1](harmful_intent=harmful_intent, critique=critique)
+        return self.try_attacks[-1](
+            harmful_intent=harmful_intent, 
+            critique=critique,
+        )

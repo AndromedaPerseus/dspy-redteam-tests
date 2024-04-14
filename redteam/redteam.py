@@ -185,12 +185,12 @@ def main():
             buf_size=setting["buf_size"],
             critique_model=setting["critique_model"],
         )
-        base_score = evaluate_baseline()
+        # base_score = evaluate_baseline()
         initial_score = evaluate_uncompiled(prog)
         optimized_score = evaluate_compiled(prog, num_threads=args.num_threads)
 
         results = {
-            "baseline": [base_score],
+            "baseline": [base_score:=0],
             "initial": [initial_score],
             "optimized": [optimized_score],
             "attack_program": [setting["attack_program"]],

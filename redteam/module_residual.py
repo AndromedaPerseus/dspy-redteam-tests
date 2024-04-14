@@ -76,4 +76,8 @@ class AttackProgram(dspy.Module):
                 target_response=response,
             )
             critique = critique.critique
-        return self.try_attacks[-1](harmful_intent=harmful_intent, critique=critique)
+        return self.try_attacks[-1](
+            harmful_intent=harmful_intent, 
+            critique=critique, 
+            previous_attack_prompt=previous_attack_prompt,
+        )

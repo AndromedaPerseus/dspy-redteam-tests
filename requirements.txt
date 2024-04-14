@@ -4,3 +4,4 @@ dspy-ai
 tqdm
 polars
 python-dotenv
+anthropic # for instructor
