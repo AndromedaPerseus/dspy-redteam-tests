@@ -3,11 +3,12 @@ from typing import Literal
 
 import numpy as np
 import openai
+import instructor
 
 import utils
 
 
-client = ...  # TODO
+client = instructor.from_openai(openai.OpenAI())
 
 class ResidualBuffer:
     def __init__(self, intent: str, buf_size: int = 1, model: str = "gpt-3.5-turbo-instruct") -> None:
@@ -34,7 +35,7 @@ class ResidualBuffer:
 
     def sample(self, mode: Literal["max", "random"] = "random") -> tuple[str, str]:
         if not self._attacks:
-            return ""
+            return "", ""
         
         if mode == "max":
             max_score = max(self._scores)
