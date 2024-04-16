@@ -1,3 +1,4 @@
 baseline,initial,optimized,attack_program,num_layers,buf_size,critique_model
 0.1,0.2,0.58,basic,2,0,""
 0,0.28,0.78,residual,2,0,""
+0.12,0.32,0.84,residual,2,0,""
