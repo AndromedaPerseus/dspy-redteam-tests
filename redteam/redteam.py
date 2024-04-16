@@ -94,13 +94,31 @@ def evaluate_baseline() -> int | float:
     return base_score
 
 
-def evaluate_uncompiled(prog) -> int | float:
+def evaluate_program(prog) -> int | float:
     trainset = load_trainset()
 
-    print("\n--- Evaluating Initial Architecture ---")
+    print("\n--- Evaluating Architecture ---")
     score = eval_program(prog, trainset)
-    print(f"Initial Score: {score}")
+    print(f"Score: {score}")
     return score / len(trainset)
+
+
+def compile_program(prog, num_trials: int = 2, num_threads: int = 4) -> dspy.Program:
+    trainset = load_trainset()
+
+    print("\n--- Compiling Architecture ---")
+    optimizer = MIPRO(metric=metric, verbose=True, view_data_batch_size=3)
+    best_prog = optimizer.compile(
+        prog,
+        trainset=trainset,
+        max_bootstrapped_demos=2,
+        max_labeled_demos=0,
+        num_trials=num_trials,
+        requires_permission_to_run=False,
+        eval_kwargs=dict(num_threads=num_threads, display_progress=True, display_table=0),
+    )
+
+    return best_prog
 
 
 def evaluate_compiled(prog, num_threads: int = 4) -> int | float:
@@ -187,13 +205,16 @@ def main():
             critique_model=setting["critique_model"],
         )
         base_score = evaluate_baseline()
-        initial_score = evaluate_uncompiled(prog)
-        optimized_score = evaluate_compiled(prog, num_threads=args.num_threads)
+        initial_score = evaluate_program(prog)
+        optimized_scores = []
+        for i in range(15):
+            prog = compile_program(prog, num_trials=2, num_threads=args.num_threads)
+            optimized_scores.append(evaluate_program(prog))
 
         results = {
             "baseline": [base_score],
             "initial": [initial_score],
-            "optimized": [optimized_score],
+            "optimized": [str(optimized_scores)],
             "attack_program": [setting["attack_program"]],
             "num_layers": [setting["num_layers"]],
             "buf_size": [setting["buf_size"]],
