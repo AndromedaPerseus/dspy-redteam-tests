@@ -106,6 +106,7 @@ def evaluate_uncompiled(prog) -> int | float:
 def evaluate_compiled(prog, num_threads: int = 4) -> int | float:
     trainset = load_trainset()
 
+    print("\n--- Compiling Architecture ---")
     optimizer = MIPRO(metric=metric, verbose=True, view_data_batch_size=3)
     best_prog = optimizer.compile(
         prog,
@@ -185,12 +186,12 @@ def main():
             buf_size=setting["buf_size"],
             critique_model=setting["critique_model"],
         )
-        # base_score = evaluate_baseline()
+        base_score = evaluate_baseline()
         initial_score = evaluate_uncompiled(prog)
         optimized_score = evaluate_compiled(prog, num_threads=args.num_threads)
 
         results = {
-            "baseline": [base_score:=0],
+            "baseline": [base_score],
             "initial": [initial_score],
             "optimized": [optimized_score],
             "attack_program": [setting["attack_program"]],
