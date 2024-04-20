@@ -11,6 +11,7 @@ import polars as pl
 import os
 from dotenv import load_dotenv
 from dspy.teleprompt import MIPRO
+from dspy.evaluate import Evaluate
 from openai import OpenAI
 from tqdm import tqdm
 from utils import get_response, judge_prompt
@@ -57,7 +58,7 @@ def metric(intent, attack_prompt, trace=None, eval_round=True):
     return score
 
 
-def eval_program(prog, eval_set):
+def eval_program_manual(prog, eval_set):
     score = 0
     for ex in tqdm(eval_set, desc="Evaluation"):
         result = prog(harmful_intent=ex.harmful_intent)
@@ -94,13 +95,15 @@ def evaluate_baseline() -> int | float:
     return base_score
 
 
-def evaluate_program(prog) -> int | float:
-    trainset = load_trainset()
-
-    print("\n--- Evaluating Architecture ---")
-    score = eval_program(prog, trainset)
-    print(f"Score: {score}")
-    return score / len(trainset)
+def eval_program(prog, eval_set) -> float:
+    evaluate = Evaluate(
+        devset=eval_set,
+        metric=lambda x, y: metric(x, y),
+        num_threads=4,
+        display_progress=True,
+        display_table=0,
+    )
+    return evaluate(prog)
 
 
 def compile_program(prog, num_trials: int = 2, num_threads: int = 4) -> dspy.Program:
@@ -119,28 +122,6 @@ def compile_program(prog, num_trials: int = 2, num_threads: int = 4) -> dspy.Pro
     )
 
     return best_prog
-
-
-def evaluate_compiled(prog, num_threads: int = 4) -> int | float:
-    trainset = load_trainset()
-
-    print("\n--- Compiling Architecture ---")
-    optimizer = MIPRO(metric=metric, verbose=True, view_data_batch_size=3)
-    best_prog = optimizer.compile(
-        prog,
-        trainset=trainset,
-        max_bootstrapped_demos=2,
-        max_labeled_demos=0,
-        num_trials=30,
-        requires_permission_to_run=False,
-        eval_kwargs=dict(num_threads=num_threads, display_progress=True, display_table=0),
-    )
-
-    # Evaluating architecture DSPy post-compilation
-    print("\n--- Evaluating Optimized Architecture ---")
-    score = eval_program(best_prog, trainset)
-    print(f"Optimized Score: {score}")
-    return score / len(trainset)
 
 
 def choose_args() -> argparse.Namespace:
@@ -205,11 +186,11 @@ def main():
             critique_model=setting["critique_model"],
         )
         base_score = evaluate_baseline()
-        initial_score = evaluate_program(prog)
+        initial_score = eval_program(prog, load_trainset())
         optimized_scores = []
         for i in range(15):
             prog = compile_program(prog, num_trials=2, num_threads=args.num_threads)
-            optimized_scores.append(evaluate_program(prog))
+            optimized_scores.append(eval_program(prog, load_trainset()))
 
         results = {
             "baseline": [base_score],
