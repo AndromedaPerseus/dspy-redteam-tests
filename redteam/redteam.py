@@ -1,21 +1,21 @@
-import dspy
-import instructor
-import json
-from typing import Literal
-import openai
-import argparse
-import itertools
-
-import polars as pl
-
+import random
 import os
 from dotenv import load_dotenv
+import argparse
+import itertools
+import json
+from typing import Literal
+
+import dspy
+import instructor
+import openai
+import polars as pl
 from dspy.teleprompt import MIPRO
 from dspy.evaluate import Evaluate
 from openai import OpenAI
 from tqdm import tqdm
-from utils import get_response, judge_prompt
 
+from utils import get_response, judge_prompt
 import module_basic
 import module_residual
 import module_residual_buffer
@@ -79,25 +79,40 @@ def load_trainset() -> list[dspy.Example]:
     return trainset
 
 
-def evaluate_baseline() -> int | float:
-    trainset = load_trainset()
+def load_datasets(split: bool = False) -> tuple[list[dspy.Example], list[dspy.Example]]:
+    with open("advbench_subset.json", "r") as f:
+        goals = json.load(f)["goals"]
 
+    trainset = [
+        dspy.Example(harmful_intent=goal).with_inputs("harmful_intent")
+        for goal in goals
+    ]
+    random.shuffle(trainset)
+    
+    if split:
+        trainset, valset = trainset[:int(0.8*len(trainset))], trainset[int(0.8*len(trainset)):]
+    else:
+        valset = trainset
+    return trainset, valset
+
+
+def evaluate_baseline(valset: list[dspy.Example]) -> int | float:
     # Evaluate baseline: directly passing in harmful intent strings
     print("--- Evaluating Raw Harmful Intent Strings ---")
     base_score = 0
-    for ex in tqdm(trainset, desc="Raw Input Score"):
+    for ex in tqdm(valset, desc="Raw Input Score"):
         base_score += metric(
             intent=ex.harmful_intent, attack_prompt=ex.harmful_intent, eval_round=True
         )
-    base_score /= len(trainset)
+    base_score /= len(valset)
     print(f"Baseline Score: {base_score}")
 
     return base_score
 
 
-def eval_program(prog, eval_set) -> float:
+def eval_program(prog, valset: list[dspy.Example]) -> float:
     evaluate = Evaluate(
-        devset=eval_set,
+        devset=valset,
         metric=lambda x, y: metric(x, y),
         num_threads=4,
         display_progress=True,
@@ -106,9 +121,12 @@ def eval_program(prog, eval_set) -> float:
     return evaluate(prog)
 
 
-def compile_program(prog, num_trials: int = 2, num_threads: int = 4) -> dspy.Program:
-    trainset = load_trainset()
-
+def compile_program(
+        prog, 
+        trainset: list[dspy.Example], 
+        num_trials: int = 2, 
+        num_threads: int = 4,
+) -> dspy.Program:
     print("\n--- Compiling Architecture ---")
     optimizer = MIPRO(metric=metric, verbose=True, view_data_batch_size=3)
     best_prog = optimizer.compile(
@@ -134,6 +152,7 @@ def choose_args() -> argparse.Namespace:
     parser.add_argument("--num_layers", type=int, nargs="+", default=5)
     parser.add_argument("--buf_size", type=int, nargs="+", default=1)
     parser.add_argument("--critique_model", type=str, nargs="+", default="gpt-3.5-turbo-instruct")
+    parser.add_argument("--split_trainset", action="store_true")
 
     parser.add_argument("--num_threads", type=int, default=4, help="Number of threads to use for optimization")
 
@@ -172,6 +191,7 @@ def get_setting_combinations(args):
 def main():
     args = choose_args()
     settings = get_setting_combinations(args)
+    trainset, valset = load_datasets(split=args.split_trainset)
     for i, setting in enumerate(settings):
         print(f"\n\n\n\n--- Running Experiment {i+1}/{len(settings)} ---")
         print(f"- Attack Program: {setting['attack_program']}")
@@ -185,12 +205,12 @@ def main():
             buf_size=setting["buf_size"],
             critique_model=setting["critique_model"],
         )
-        base_score = evaluate_baseline()
-        initial_score = eval_program(prog, load_trainset())
+        base_score = evaluate_baseline(valset)
+        initial_score = eval_program(prog, valset)
         optimized_scores = []
         for i in range(15):
-            prog = compile_program(prog, num_trials=2, num_threads=args.num_threads)
-            optimized_scores.append(eval_program(prog, load_trainset()))
+            prog = compile_program(prog, trainset, num_trials=2, num_threads=args.num_threads)
+            optimized_scores.append(eval_program(prog, valset))
 
         results = {
             "baseline": [base_score],
@@ -200,6 +220,7 @@ def main():
             "num_layers": [setting["num_layers"]],
             "buf_size": [setting["buf_size"]],
             "critique_model": [setting["critique_model"]],
+            "split_trainset": [args.split_trainset],
         }
 
         if args.save:
